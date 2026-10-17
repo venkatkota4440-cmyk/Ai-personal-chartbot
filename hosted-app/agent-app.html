@@ -1011,7 +1011,7 @@
     var br = briefingRow();
     var bIn = el("input"); bIn.type = "time"; bIn.value = dd.briefingTime || "08:00";
     bIn.setAttribute("aria-label", "Briefing time");
-    bIn.style.width = "8.5rem";
+    bIn.style.width = "10.5rem";
     var bBtn = dd.briefingTime
       ? button("Turn off", "plain sm", function () { saveDaily({ briefingTime: "" }, "Turned off the daily briefing"); })
       : button("Turn on", "tinted sm", function () { saveDaily({ briefingTime: bIn.value || "08:00" }, "Daily briefing set for " + (bIn.value || "08:00")); });
@@ -1026,8 +1026,9 @@
         ? "Written for you every day, ready by " + atLocal(new Date(), dd.briefingTime).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) +
           (br && br.dueAt ? " · next " + fmtWhen(br.dueAt) : "")
         : "Off. A short summary of your day, written automatically.",
-      trailing: [bIn, bBtn]
+      trailing: bBtn
     }));
+    rows.push(row({ title: "Briefing time", trailing: bIn }));
 
     return section("Daily routine", card(rows),
       "Post times: when you approve a post with “Next daily slot”, it takes the next free one, so a week of photos approved at once goes out one a day. " +
