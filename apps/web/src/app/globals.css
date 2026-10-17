@@ -1,0 +1,167 @@
+@import "tailwindcss";
+
+/*
+ * Apple platform design language (iOS / macOS), per the owner's direction.
+ *
+ * - System typography: SF Pro on Apple devices, with a sensible fallback stack.
+ * - Apple's semantic system colours, in both light and dark appearance.
+ * - Grouped inset lists, hairline separators, translucent bars, 44pt targets.
+ * Contrast of every text colour on its own surface meets WCAG AA.
+ */
+@theme {
+  /* System greys and backgrounds (light appearance) */
+  --color-bg: #f2f2f7; /* systemGroupedBackground */
+  --color-surface: #ffffff; /* secondarySystemGroupedBackground */
+  --color-surface-2: #f2f2f7;
+  --color-fill: rgba(120, 120, 128, 0.12); /* secondarySystemFill */
+  --color-separator: rgba(60, 60, 67, 0.18);
+
+  /* Labels. Apple's own secondaryLabel measures 4.16:1 on the grouped background, under
+     the 4.5:1 WCAG AA needs for small text, so these are darkened to the nearest passing greys. */
+  --color-label: #1c1c1e;
+  --color-label-2: #5c5c61; /* 5.96:1 on grouped, 6.65:1 on white */
+  --color-label-3: #6c6c70; /* 4.69:1 on grouped; decorative marks only */
+
+  /* Accent colours. systemBlue (#007AFF) gives only 4.02:1 under white text, so the text and
+     fill blue is one step darker; the dark appearance keeps Apple's values, which already pass. */
+  --color-blue: #0062cc; /* 5.80:1 with white, 5.20:1 as text on grouped */
+  --color-blue-press: #00529e;
+  --color-green: #1c7a33;
+  --color-red: #d70015;
+  --color-orange: #c93400;
+  --color-purple: #6b4ce6;
+  --color-teal: #006d85;
+  --color-gray: #8e8e93;
+
+  /* Tints for filled chips, kept light enough for dark text */
+  --color-blue-tint: #e3eeff;
+  --color-green-tint: #e3f7e8;
+  --color-red-tint: #ffe9e8;
+  --color-orange-tint: #fff0e6;
+  --color-purple-tint: #efeaff;
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", "Segoe UI",
+    Roboto, system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+
+  /* Apple's type ramp */
+  --text-largetitle: 2.125rem; /* 34 */
+  --text-title1: 1.75rem;
+  --text-title2: 1.375rem;
+  --text-headline: 1.0625rem;
+  --text-body: 1.0625rem; /* 17 */
+  --text-callout: 1rem;
+  --text-subhead: 0.9375rem;
+  --text-footnote: 0.8125rem;
+  --text-caption: 0.75rem;
+
+  --radius-card: 0.625rem; /* 10pt, the grouped-list corner */
+  --radius-control: 0.75rem;
+
+  --animate-appear: appear 0.28s cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+
+@keyframes appear {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Dark appearance: system follows the device, and an explicit choice wins either way. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --color-bg: #000000;
+    --color-surface: #1c1c1e;
+    --color-surface-2: #2c2c2e;
+    --color-fill: rgba(120, 120, 128, 0.24);
+    --color-separator: rgba(84, 84, 88, 0.6);
+    --color-label: #ffffff;
+    --color-label-2: #ebebf599;
+    --color-label-3: #ebebf566;
+    --color-blue: #0a84ff;
+    --color-blue-press: #409cff;
+    --color-green: #30d158;
+    --color-red: #ff453a;
+    --color-orange: #ff9f0a;
+    --color-purple: #bf5af2;
+    --color-teal: #40c8e0;
+    --color-gray: #98989d;
+    --color-blue-tint: #0a84ff26;
+    --color-green-tint: #30d15826;
+    --color-red-tint: #ff453a26;
+    --color-orange-tint: #ff9f0a26;
+    --color-purple-tint: #bf5af226;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --color-bg: #000000;
+  --color-surface: #1c1c1e;
+  --color-surface-2: #2c2c2e;
+  --color-fill: rgba(120, 120, 128, 0.24);
+  --color-separator: rgba(84, 84, 88, 0.6);
+  --color-label: #ffffff;
+  --color-label-2: #ebebf599;
+  --color-label-3: #ebebf566;
+  --color-blue: #0a84ff;
+  --color-blue-press: #409cff;
+  --color-green: #30d158;
+  --color-red: #ff453a;
+  --color-orange: #ff9f0a;
+  --color-purple: #bf5af2;
+  --color-teal: #40c8e0;
+  --color-gray: #98989d;
+  --color-blue-tint: #0a84ff26;
+  --color-green-tint: #30d15826;
+  --color-red-tint: #ff453a26;
+  --color-orange-tint: #ff9f0a26;
+  --color-purple-tint: #bf5af226;
+  color-scheme: dark;
+}
+
+html,
+body {
+  background-color: var(--color-bg);
+  color: var(--color-label);
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Apple's focus ring: a clear blue halo, never removed. */
+:focus-visible {
+  outline: 3px solid var(--color-blue);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+/* Hairline separator, inset like a grouped list row. */
+.hairline > * + * {
+  border-top: 0.5px solid var(--color-separator);
+}
+
+/* Translucent material, as used by navigation and tab bars. */
+.material {
+  background-color: color-mix(in srgb, var(--color-surface) 94%, transparent);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

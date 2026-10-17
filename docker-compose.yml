@@ -1,0 +1,104 @@
+# Local full stack: web, api, worker, redis, postgres.
+#   cp .env.example .env    # then fill in POSTGRES_PASSWORD and SESSION_SECRET
+#   docker compose up --build
+# Open http://localhost:3000
+name: personal-ai-agent
+
+x-api-env: &api-env
+  APP_ENV: ${APP_ENV:-development}
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  DATABASE_URL: postgresql+psycopg://paa:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/paa
+  REDIS_URL: redis://redis:6379/0
+  SESSION_SECRET: ${SESSION_SECRET:-}
+  CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+  RATE_LIMIT_BACKEND: redis
+  AI_PROVIDER: ${AI_PROVIDER:-mock}
+  AI_API_KEY: ${AI_API_KEY:-}
+  ALLOWED_MODELS: ${ALLOWED_MODELS:-mock-deterministic}
+  # The API hands runs to the RQ worker rather than executing them in the web process.
+  WORKER_MODE: ${WORKER_MODE:-redis}
+  AI_TIMEOUT_SECONDS: ${AI_TIMEOUT_SECONDS:-60}
+  CHAT_RATE_LIMIT_PER_MINUTE: ${CHAT_RATE_LIMIT_PER_MINUTE:-20}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: paa
+      POSTGRES_DB: paa
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U paa -d paa"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # Migrations run as their own one-shot step, never implicitly on API start.
+  migrate:
+    build: { context: ., dockerfile: apps/api/Dockerfile }
+    command: ["alembic", "upgrade", "head"]
+    environment: *api-env
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  api:
+    build: { context: ., dockerfile: apps/api/Dockerfile }
+    # X-Forwarded-For is NOT trusted by default (FORWARDED_ALLOW_IPS=127.0.0.1), so clients cannot
+    # spoof their IP to dodge rate limits. Behind a real reverse proxy, set it to that proxy's address.
+    environment: *api-env
+    # Bound to localhost only, for debugging with curl. The browser goes through the web app.
+    ports: ["127.0.0.1:8000:8000"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  # Background worker. M1 only runs a heartbeat job; the automation executor arrives in M4.
+  worker:
+    build: { context: ., dockerfile: apps/api/Dockerfile }
+    command: ["rq", "worker", "--url", "redis://redis:6379/0", "default"]
+    environment:
+      <<: *api-env
+      WORKER_MODE: redis
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+
+  # Evaluates cron schedules once a minute and queues due runs.
+  scheduler:
+    build: { context: ., dockerfile: apps/api/Dockerfile }
+    command: ["python", "-m", "app.workers.scheduler"]
+    environment:
+      <<: *api-env
+      WORKER_MODE: redis
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      # Rewrites are fixed at build time in Next.js; change this and rebuild if the API moves.
+      args: { API_INTERNAL_URL: "http://api:8000" }
+    ports: ["3000:3000"]
+    depends_on:
+      api: { condition: service_healthy }
+
+volumes:
+  pgdata:

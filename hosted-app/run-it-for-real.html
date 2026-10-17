@@ -1,0 +1,230 @@
+<title>Run It For Real</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+  /* Apple design language, matching the app. Light and dark follow the device. */
+  :root {
+    --bg: #f2f2f7; --surface: #ffffff; --surface-2: #e9e9ef;
+    --fill: rgba(120,120,128,0.12); --separator: rgba(60,60,67,0.18);
+    --label: #1c1c1e; --label-2: #5c5c61; --label-3: #85858b;
+    --blue: #0062cc; --green: #1c7a33; --red: #d70015; --orange: #a84800;
+    --blue-tint: #e3eeff; --green-tint: #e3f7e8; --orange-tint: #fff0e6; --red-tint: #ffe9e8;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg:#000; --surface:#1c1c1e; --surface-2:#2c2c2e;
+      --fill:rgba(120,120,128,0.24); --separator:rgba(84,84,88,0.6);
+      --label:#fff; --label-2:#a1a1a8; --label-3:#8e8e93;
+      --blue:#0a84ff; --green:#30d158; --red:#ff453a; --orange:#ff9f0a;
+      --blue-tint:rgba(10,132,255,0.18); --green-tint:rgba(48,209,88,0.18);
+      --orange-tint:rgba(255,159,10,0.18); --red-tint:rgba(255,69,58,0.18);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg:#000; --surface:#1c1c1e; --surface-2:#2c2c2e;
+    --fill:rgba(120,120,128,0.24); --separator:rgba(84,84,88,0.6);
+    --label:#fff; --label-2:#a1a1a8; --label-3:#8e8e93;
+    --blue:#0a84ff; --green:#30d158; --red:#ff453a; --orange:#ff9f0a;
+    --blue-tint:rgba(10,132,255,0.18); --green-tint:rgba(48,209,88,0.18);
+    --orange-tint:rgba(255,159,10,0.18); --red-tint:rgba(255,69,58,0.18);
+    color-scheme: dark;
+  }
+
+  html, body { background: var(--bg); }
+  body {
+    margin: 0; color: var(--label); font-size: 17px; line-height: 1.5;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  * { box-sizing: border-box; }
+  .page {
+    max-width: 42rem; margin: 0 auto;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 24px 56px;
+  }
+  h1 { font-size: 34px; font-weight: 700; letter-spacing: -0.4px; margin: 0 0 6px; text-wrap: balance; }
+  h2 { font-size: 22px; font-weight: 700; margin: 34px 0 10px; letter-spacing: -0.2px; }
+  h3 { font-size: 17px; font-weight: 600; margin: 0 0 4px; }
+  p { margin: 0 0 12px; }
+  .lead { color: var(--label-2); font-size: 17px; margin-bottom: 4px; }
+  .eyebrow { color: var(--blue); font-size: 15px; font-weight: 600; margin: 0 0 4px; }
+
+  .card { background: var(--surface); border-radius: 12px; padding: 16px; margin-bottom: 12px; }
+  .card.tight { padding: 0; overflow: hidden; }
+  .row { display: flex; gap: 12px; align-items: flex-start; padding: 13px 16px; }
+  .row + .row { border-top: 0.5px solid var(--separator); }
+  .num {
+    flex: none; width: 26px; height: 26px; border-radius: 50%; background: var(--blue); color: #fff;
+    display: grid; place-items: center; font-size: 14px; font-weight: 700;
+  }
+  .dot { flex: none; width: 10px; height: 10px; border-radius: 50%; margin-top: 7px; }
+  .dot.ok { background: var(--green); } .dot.todo { background: var(--orange); }
+  .muted { color: var(--label-2); font-size: 15px; }
+  .grow { min-width: 0; }
+
+  svg.diagram { display: block; width: 100%; height: auto; max-width: 100%; }
+
+  code, pre {
+    font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+    font-size: 14px;
+  }
+  code { background: var(--fill); border-radius: 5px; padding: 1px 5px; overflow-wrap: anywhere; }
+  pre {
+    background: var(--surface-2); border-radius: 10px; padding: 12px 14px;
+    overflow-x: auto; margin: 0 0 10px; line-height: 1.6;
+  }
+  pre code { background: none; padding: 0; }
+
+  .note { border-radius: 10px; padding: 12px 14px; font-size: 15px; margin: 0 0 12px; }
+  .note.warn { background: var(--orange-tint); }
+  .note.info { background: var(--blue-tint); }
+  .note.stop { background: var(--red-tint); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  th, td { text-align: left; padding: 10px 6px; border-bottom: 0.5px solid var(--separator); vertical-align: top; }
+  th { font-size: 13px; text-transform: uppercase; letter-spacing: 0.4px; color: var(--label-2); font-weight: 600; }
+  td.state { white-space: nowrap; font-weight: 600; }
+  .yes { color: var(--green); } .later { color: var(--orange); }
+
+  a { color: var(--blue); }
+  ul { margin: 0 0 12px; padding-left: 20px; }
+  li { margin-bottom: 5px; }
+  .pill { display: inline-block; background: var(--fill); border-radius: 999px; padding: 2px 10px; font-size: 13px; font-weight: 600; color: var(--label-2); }
+  :focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; border-radius: 8px; }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+
+<div class="page">
+  <p class="eyebrow">Personal Agent</p>
+  <h1>Run it for real</h1>
+  <p class="lead">What you need so automations actually fire at 9pm, and what it takes to connect Instagram.</p>
+
+  <h2>The short answer</h2>
+  <div class="card tight">
+    <div class="row"><span class="num">1</span><div class="grow"><h3>A computer that never sleeps</h3><p class="muted">Your phone cannot do this. Something must stay awake to watch the clock.</p></div></div>
+    <div class="row"><span class="num">2</span><div class="grow"><h3>The app running on it</h3><p class="muted">Five small programs started by one command.</p></div></div>
+    <div class="row"><span class="num">3</span><div class="grow"><h3>Permission from each app</h3><p class="muted">Instagram will not let software post until Meta approves you.</p></div></div>
+  </div>
+
+  <h2>How the parts fit</h2>
+  <div class="card">
+    <svg class="diagram" viewBox="0 0 340 215" role="img" aria-label="The scheduler watches the clock, puts due work in a queue, the worker runs it, and anything high risk stops for your approval before it reaches Instagram">
+      <defs>
+        <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+          <path d="M0 0 10 5 0 10z" fill="var(--label-3)"/>
+        </marker>
+      </defs>
+      <rect x="8" y="10" width="92" height="40" rx="9" fill="var(--blue-tint)"/>
+      <text x="54" y="28" text-anchor="middle" font-size="12" font-weight="600" fill="var(--blue)">Scheduler</text>
+      <text x="54" y="42" text-anchor="middle" font-size="10" fill="var(--label-2)">watches 9:00pm</text>
+
+      <rect x="124" y="10" width="92" height="40" rx="9" fill="var(--fill)"/>
+      <text x="170" y="28" text-anchor="middle" font-size="12" font-weight="600" fill="var(--label)">Queue</text>
+      <text x="170" y="42" text-anchor="middle" font-size="10" fill="var(--label-2)">work waiting</text>
+
+      <rect x="240" y="10" width="92" height="40" rx="9" fill="var(--fill)"/>
+      <text x="286" y="28" text-anchor="middle" font-size="12" font-weight="600" fill="var(--label)">Worker</text>
+      <text x="286" y="42" text-anchor="middle" font-size="10" fill="var(--label-2)">does the steps</text>
+
+      <line x1="102" y1="30" x2="120" y2="30" stroke="var(--label-3)" stroke-width="1.6" marker-end="url(#ar)"/>
+      <line x1="218" y1="30" x2="236" y2="30" stroke="var(--label-3)" stroke-width="1.6" marker-end="url(#ar)"/>
+      <line x1="286" y1="52" x2="286" y2="74" stroke="var(--label-3)" stroke-width="1.6" marker-end="url(#ar)"/>
+
+      <rect x="186" y="78" width="146" height="46" rx="9" fill="var(--orange-tint)"/>
+      <text x="259" y="97" text-anchor="middle" font-size="12" font-weight="700" fill="var(--orange)">Stops and asks you</text>
+      <text x="259" y="112" text-anchor="middle" font-size="10" fill="var(--label-2)">high-risk actions only</text>
+
+      <line x1="259" y1="126" x2="259" y2="148" stroke="var(--label-3)" stroke-width="1.6" marker-end="url(#ar)"/>
+      <rect x="186" y="152" width="146" height="44" rx="9" fill="var(--green-tint)"/>
+      <text x="259" y="171" text-anchor="middle" font-size="12" font-weight="700" fill="var(--green)">Instagram</text>
+      <text x="259" y="186" text-anchor="middle" font-size="10" fill="var(--label-2)">only after you approve</text>
+
+      <rect x="8" y="78" width="146" height="118" rx="9" fill="var(--surface-2)"/>
+      <text x="81" y="104" text-anchor="middle" font-size="12" font-weight="600" fill="var(--label)">Database</text>
+      <text x="81" y="122" text-anchor="middle" font-size="10" fill="var(--label-2)">your tasks, runs,</text>
+      <text x="81" y="136" text-anchor="middle" font-size="10" fill="var(--label-2)">approvals, history</text>
+      <text x="81" y="162" text-anchor="middle" font-size="10" fill="var(--label-3)">+ the website you</text>
+      <text x="81" y="176" text-anchor="middle" font-size="10" fill="var(--label-3)">open on your phone</text>
+    </svg>
+  </div>
+  <p class="muted">The <strong>scheduler</strong> is the piece that makes automations happen on time. If it is not running, nothing fires.</p>
+
+  <h2>Where to run it</h2>
+  <div class="card tight">
+    <div class="row">
+      <span class="dot ok"></span>
+      <div class="grow">
+        <h3>A small cloud server <span class="pill">recommended</span></h3>
+        <p class="muted">Always on, nothing to maintain at home. Providers like Railway, Render, Fly.io, Hetzner or DigitalOcean run this size of app for roughly a few dollars a month. Check their current prices yourself — they change.</p>
+      </div>
+    </div>
+    <div class="row">
+      <span class="dot todo"></span>
+      <div class="grow">
+        <h3>Your own computer</h3>
+        <p class="muted">Free, but it must stay switched on and online. If it sleeps at night, your 9pm automation does not run.</p>
+      </div>
+    </div>
+    <div class="row">
+      <span class="dot todo"></span>
+      <div class="grow">
+        <h3>Your phone</h3>
+        <p class="muted">Not possible. A phone cannot keep a server running in the background.</p>
+      </div>
+    </div>
+  </div>
+
+  <h2>Starting it</h2>
+  <p>On the server, with the project files and Docker installed:</p>
+  <pre><code>cp .env.example .env
+# fill in POSTGRES_PASSWORD and SESSION_SECRET
+
+docker compose up -d</code></pre>
+  <p class="muted">That one command starts all five parts: database, queue, API, worker and scheduler. Open <code>http://your-server:3000</code> and sign in.</p>
+  <div class="note info">
+    You only set two secrets to begin: a database password and a long random session key. Add an AI key later if you want real answers in Chat instead of the demo model.
+  </div>
+
+  <h2>Connecting Instagram</h2>
+  <div class="note stop">
+    This is the slow part, and most of it is paperwork with Meta, not code. Expect days to weeks, not minutes.
+  </div>
+  <div class="card tight">
+    <div class="row"><span class="num">1</span><div class="grow"><h3>Make the account professional</h3><p class="muted">A personal Instagram account can never post through the API. It must be a professional (business) account.</p></div></div>
+    <div class="row"><span class="num">2</span><div class="grow"><h3>Create an app on Meta for Developers</h3><p class="muted">This gives you the keys your server will use.</p></div></div>
+    <div class="row"><span class="num">3</span><div class="grow"><h3>Ask for the publishing permission</h3><p class="muted">Called <code>instagram_business_content_publish</code> on the Instagram login path, or <code>instagram_content_publish</code> on the older Facebook login path.</p></div></div>
+    <div class="row"><span class="num">4</span><div class="grow"><h3>Pass App Review</h3><p class="muted">Meta asks for a written explanation and a screen recording showing your app posting. Business verification may also be required.</p></div></div>
+    <div class="row"><span class="num">5</span><div class="grow"><h3>Put the token in your server's settings</h3><p class="muted">It stays on the server, never in the phone app.</p></div></div>
+  </div>
+
+  <h3>Rules that will trip you up</h3>
+  <ul>
+    <li>Your photo must already be on a <strong>public web address</strong> when posting. Instagram fetches it; it cannot read a file from your phone.</li>
+    <li>Images must be <strong>JPEG</strong>, and there are size limits.</li>
+    <li>There is a daily cap on how many posts you may publish through the API.</li>
+    <li>Link, poll and question stickers are <strong>not</strong> available through the API.</li>
+  </ul>
+  <div class="note warn">
+    One detail is genuinely unclear right now: whether a linked Facebook Page is still required. Sources disagree, and it depends which login path you use. Confirm it on Meta's own documentation before you build around it.
+  </div>
+
+  <h2>What is already built</h2>
+  <table>
+    <thead><tr><th>Piece</th><th style="text-align:right">State</th></tr></thead>
+    <tbody>
+      <tr><td>Scheduler, queue, worker, run history</td><td class="state yes">Built</td></tr>
+      <tr><td>Approval gate (stops before anything risky)</td><td class="state yes">Built</td></tr>
+      <tr><td>Tasks, projects, chat, memory</td><td class="state yes">Built</td></tr>
+      <tr><td>Instagram connector</td><td class="state later">Stub</td></tr>
+      <tr><td>Your Meta account and approval</td><td class="state later">Yours</td></tr>
+      <tr><td>A server to run on</td><td class="state later">Yours</td></tr>
+    </tbody>
+  </table>
+  <p class="muted">The connector is deliberately a stub: it records what would be sent and reports “NOT sent”. Replacing it is one small file, once your Meta approval is through.</p>
+
+  <div class="note stop" style="margin-top:22px">
+    <strong>Today:</strong> the app you are using records your approvals. It does not post anything to Instagram, and no account is connected.
+  </div>
+</div>

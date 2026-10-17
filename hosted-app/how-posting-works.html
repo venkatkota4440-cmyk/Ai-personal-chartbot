@@ -1,0 +1,151 @@
+<title>How Posting Works</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+  /* Apple design language, matching the app. Light and dark follow the device. */
+  :root {
+    --bg:#f2f2f7; --surface:#fff; --surface-2:#e9e9ef;
+    --fill:rgba(120,120,128,0.12); --separator:rgba(60,60,67,0.18);
+    --label:#1c1c1e; --label-2:#5c5c61; --label-3:#85858b;
+    --blue:#0062cc; --green:#1c7a33; --red:#d70015; --orange:#a84800;
+    --blue-tint:#e3eeff; --green-tint:#e3f7e8; --orange-tint:#fff0e6; --red-tint:#ffe9e8;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg:#000; --surface:#1c1c1e; --surface-2:#2c2c2e;
+      --fill:rgba(120,120,128,0.24); --separator:rgba(84,84,88,0.6);
+      --label:#fff; --label-2:#a1a1a8; --label-3:#8e8e93;
+      --blue:#0a84ff; --green:#30d158; --red:#ff453a; --orange:#ff9f0a;
+      --blue-tint:rgba(10,132,255,0.18); --green-tint:rgba(48,209,88,0.18);
+      --orange-tint:rgba(255,159,10,0.18); --red-tint:rgba(255,69,58,0.18);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg:#000; --surface:#1c1c1e; --surface-2:#2c2c2e;
+    --fill:rgba(120,120,128,0.24); --separator:rgba(84,84,88,0.6);
+    --label:#fff; --label-2:#a1a1a8; --label-3:#8e8e93;
+    --blue:#0a84ff; --green:#30d158; --red:#ff453a; --orange:#ff9f0a;
+    --blue-tint:rgba(10,132,255,0.18); --green-tint:rgba(48,209,88,0.18);
+    --orange-tint:rgba(255,159,10,0.18); --red-tint:rgba(255,69,58,0.18);
+    color-scheme: dark;
+  }
+
+  html, body { background: var(--bg); }
+  body {
+    margin:0; color:var(--label); font-size:17px; line-height:1.5;
+    font-family:-apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  * { box-sizing: border-box; }
+  .page {
+    max-width:42rem; margin:0 auto;
+    padding-left:max(16px, env(safe-area-inset-left, 0px));
+    padding-right:max(16px, env(safe-area-inset-right, 0px));
+    padding-block:24px 60px;
+  }
+  h1 { font-size:34px; font-weight:700; letter-spacing:-0.4px; margin:0 0 6px; text-wrap:balance; }
+  h2 { font-size:22px; font-weight:700; margin:34px 0 10px; letter-spacing:-0.2px; }
+  h3 { font-size:17px; font-weight:600; margin:0 0 3px; }
+  p { margin:0 0 12px; }
+  .lead { color:var(--label-2); margin-bottom:4px; }
+  .eyebrow { color:var(--blue); font-size:15px; font-weight:600; margin:0 0 4px; }
+
+  .card { background:var(--surface); border-radius:12px; padding:16px; margin-bottom:12px; }
+  .card.tight { padding:0; overflow:hidden; }
+  .row { display:flex; gap:12px; align-items:flex-start; padding:13px 16px; }
+  .row + .row { border-top:0.5px solid var(--separator); }
+  .num { flex:none; width:26px; height:26px; border-radius:50%; background:var(--blue); color:#fff;
+         display:grid; place-items:center; font-size:14px; font-weight:700; }
+  .grow { min-width:0; }
+  .muted { color:var(--label-2); font-size:15px; }
+
+  code { background:var(--fill); border-radius:5px; padding:1px 5px; font-size:14px;
+         font-family:ui-monospace,"SF Mono",SFMono-Regular,Menlo,monospace; overflow-wrap:anywhere; }
+
+  .note { border-radius:10px; padding:12px 14px; font-size:15px; margin:0 0 14px; }
+  .note.good { background:var(--green-tint); }
+  .note.warn { background:var(--orange-tint); }
+  .note.stop { background:var(--red-tint); }
+  .note.info { background:var(--blue-tint); }
+
+  table { width:100%; border-collapse:collapse; font-size:15px; }
+  th, td { text-align:left; padding:10px 6px; border-bottom:0.5px solid var(--separator); vertical-align:top; }
+  th { font-size:13px; text-transform:uppercase; letter-spacing:0.4px; color:var(--label-2); font-weight:600; }
+
+  ul { margin:0 0 12px; padding-left:20px; }
+  li { margin-bottom:6px; }
+  a { color:var(--blue); }
+  :focus-visible { outline:3px solid var(--blue); outline-offset:2px; border-radius:8px; }
+  @media (prefers-reduced-motion: reduce) { * { animation:none !important; transition:none !important; } }
+</style>
+
+<div class="page">
+  <p class="eyebrow">Personal Agent</p>
+  <h1>How posting works now</h1>
+  <p class="lead">Your app can really publish to Instagram. Here is exactly what happens, and where it stops.</p>
+
+  <div class="note good">
+    <strong>The Meta developer route is no longer needed.</strong> Everything that page described — a Facebook app, App Review, long-lived tokens, refreshing them every 60 days — is replaced by the <strong>Postproxy</strong> connector on your Claude account. It already holds the Instagram permission, so the app borrows it at the moment you tap Approve. No token ever touches this app or me.
+  </div>
+
+  <h2>The account</h2>
+  <div class="note good">
+    <strong>Confirmed: posts go to your connected profile.</strong> That is the profile Postproxy has connected, and you have confirmed it is the right one. The app has it saved as the expected handle, so the orange mismatch warning is gone. It still shows the live account name and id on the Schedule tab and on every approval screen — if it ever stops saying your connected profile, something changed in Postproxy, and you should not approve until you know why.
+  </div>
+
+  <h2>What happens, step by step</h2>
+  <div class="card tight">
+    <div class="row"><span class="num">1</span><div class="grow">
+      <h3>You schedule it</h3>
+      <p class="muted">Schedule tab: pick story, post or reel, give the public <code>https</code> address of the photo or video, set a time. It is saved, not sent.</p>
+    </div></div>
+    <div class="row"><span class="num">2</span><div class="grow">
+      <h3>The clock checks every hour</h3>
+      <p class="muted">A scheduled task runs on Anthropic's servers, with your phone closed. It can only move a due action to <strong>Waiting for you</strong>. It holds no Instagram access at all, so it cannot post even if something told it to.</p>
+    </div></div>
+    <div class="row"><span class="num">3</span><div class="grow">
+      <h3>You get a notification</h3>
+      <p class="muted">Approvals tab shows the post with a red badge on the tab bar.</p>
+    </div></div>
+    <div class="row"><span class="num">4</span><div class="grow">
+      <h3>You read exactly what will go out</h3>
+      <p class="muted">The account name and id, the format, the caption, the media address, and the precise arguments that will be sent — plus a SHA-256 fingerprint of all of it. There is a <strong>Check it first</strong> button that asks Postproxy to validate the post without publishing it.</p>
+    </div></div>
+    <div class="row"><span class="num">5</span><div class="grow">
+      <h3>You tap Publish now</h3>
+      <p class="muted">Only then does anything leave. The app re-checks the connected account one last time; if it changed since you opened the screen, it refuses and posts nothing.</p>
+    </div></div>
+    <div class="row"><span class="num">6</span><div class="grow">
+      <h3>The result is recorded honestly</h3>
+      <p class="muted">Posted, Not posted with the reason, or <strong>Outcome unknown</strong> if Postproxy never answered. It is never marked posted unless Postproxy said it was.</p>
+    </div></div>
+  </div>
+
+  <h2>Things that will trip you up</h2>
+  <table>
+    <tbody>
+      <tr><td><strong>The media must be a public link</strong></td><td>Instagram fetches the file itself, so <code>https://…/photo.jpg</code> works and a photo in your camera roll does not. JPEG for photos.</td></tr>
+      <tr><td><strong>Stories carry no caption</strong></td><td>Instagram's API does not accept one, so the app sends an empty caption for a story. Whatever you type is just a note to yourself.</td></tr>
+      <tr><td><strong>No link or poll stickers</strong></td><td>Not available through any API.</td></tr>
+      <tr><td><strong>A daily cap applies</strong></td><td>Instagram limits API posts per 24 hours. Normal personal use will not reach it.</td></tr>
+      <tr><td><strong>Approval covers one post, once</strong></td><td>The fingerprint is sent as the idempotency key, so the same approved post cannot double up.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>What still cannot happen</h2>
+  <ul>
+    <li><strong>I cannot post for you.</strong> Only the app can, and only from your tap.</li>
+    <li><strong>The hourly scheduler cannot post.</strong> It is created with no connectors, so it has no route to Instagram.</li>
+    <li><strong>Nothing posts silently.</strong> There is no setting to skip approval, by design.</li>
+    <li><strong>Nothing is unsendable.</strong> Once a story or post is live, it is live. That is why the screen is red.</li>
+  </ul>
+
+  <div class="note stop">
+    <strong>Rotate that secret.</strong> You pasted a 48-character key into the chat earlier. I did not store or use it, but a chat is not a safe place for one. Treat it as compromised and regenerate it wherever it came from.
+  </div>
+
+  <div class="note info">
+    This app is private to your Claude account. Anyone you share the link with could post to the connected Instagram account from it, so do not share it.
+  </div>
+</div>

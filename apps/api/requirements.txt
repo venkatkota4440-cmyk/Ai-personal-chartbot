@@ -1,0 +1,14 @@
+# Runtime dependencies for the API and worker. Pinned for reproducible builds.
+fastapi==0.115.12
+uvicorn[standard]==0.34.2
+sqlalchemy==2.0.40
+alembic==1.14.1
+pydantic==2.11.4
+pydantic-settings==2.9.1
+email-validator==2.2.0
+argon2-cffi==23.1.0
+psycopg[binary]==3.2.9
+redis==5.2.1
+rq==2.3.3
+tzdata==2026.5
+anthropic==1.15.0
