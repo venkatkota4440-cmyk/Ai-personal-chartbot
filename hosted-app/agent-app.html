@@ -479,24 +479,46 @@
    * Accounts you have confirmed, held by stable id. A name can change or be
    * reused; an id cannot. Nothing posts to an account you have not confirmed.
    */
-  function confirmedMap() {
-    var r = state.settings.find(function (s) { return s.id === "accounts"; });
-    var map = Object.assign({}, (r && r.confirmed) || {});
-    // Carry forward the single-account confirmation from the earlier version.
-    var old = state.settings.find(function (s) { return s.id === "instagram"; });
-    if (old && old.confirmedId && !map[old.confirmedId]) {
-      map[old.confirmedId] = { name: old.confirmedName || old.confirmedId, platform: "instagram", at: old.confirmedAt };
-    }
-    return map;
+  function accountsDoc() {
+    var r = state.settings.find(function (s) { return s.id === "accounts"; }) || {};
+    return { confirmed: r.confirmed || {}, wrong: r.wrong || {}, expected: r.expected || {} };
   }
-  function isConfirmed(p) { return !!confirmedMap()[p.id]; }
+  function confirmedMap() { return Object.assign({}, accountsDoc().confirmed); }
+  /** Accounts you have said are not yours. Never posted to, and never offered. */
+  function isWrong(p) { return !!accountsDoc().wrong[p.id]; }
+  function isConfirmed(p) { return !!accountsDoc().confirmed[p.id] && !isWrong(p); }
   function confirmedProfiles() { return state.conn.profiles.filter(isConfirmed); }
+  function norm(h) { return String(h || "").toLowerCase().replace(/^@/, "").replace(/\s+/g, ""); }
+  /** A handle you told the app to expect, for a platform where it is not connected yet. */
+  function missingExpected() {
+    var exp = accountsDoc().expected, out = [];
+    Object.keys(exp).forEach(function (platform) {
+      var want = norm(exp[platform]);
+      var found = state.conn.profiles.some(function (p) { return p.platform === platform && norm(p.name) === want && !isWrong(p); });
+      if (want && !found) out.push({ platform: platform, handle: exp[platform] });
+    });
+    return out;
+  }
+  function isExpected(p) { return norm(accountsDoc().expected[p.platform]) === norm(p.name); }
+  async function saveAccounts(doc, message) {
+    await save("settings", "accounts", Object.assign({}, doc, { updatedAt: nowIso() }));
+    if (message) await log(message);
+  }
   async function setConfirmed(p, on) {
-    var map = confirmedMap();
-    if (on) map[p.id] = { name: p.name, platform: p.platform, at: nowIso() };
-    else delete map[p.id];
-    await save("settings", "accounts", { confirmed: map, updatedAt: nowIso() });
-    await log((on ? "Confirmed " : "Removed ") + platformName(p.platform) + " account " + p.name);
+    var doc = accountsDoc();
+    var confirmed = Object.assign({}, doc.confirmed), wrong = Object.assign({}, doc.wrong);
+    if (on) { confirmed[p.id] = { name: p.name, platform: p.platform, at: nowIso() }; delete wrong[p.id]; }
+    else delete confirmed[p.id];
+    await saveAccounts({ confirmed: confirmed, wrong: wrong, expected: doc.expected },
+      (on ? "Confirmed " : "Removed ") + platformName(p.platform) + " account " + p.name);
+  }
+  async function setWrong(p, on) {
+    var doc = accountsDoc();
+    var confirmed = Object.assign({}, doc.confirmed), wrong = Object.assign({}, doc.wrong);
+    if (on) { wrong[p.id] = { name: p.name, platform: p.platform, at: nowIso() }; delete confirmed[p.id]; }
+    else delete wrong[p.id];
+    await saveAccounts({ confirmed: confirmed, wrong: wrong, expected: doc.expected },
+      on ? "Marked " + p.name + " as not your account — the app will never post there." : "Un-marked " + p.name + ".");
   }
   function profileLabel(p) { return p.name + " · " + platformName(p.platform); }
 
@@ -535,6 +557,84 @@
         };
       })
       .sort(function (a, b) { return a.at < b.at ? 1 : -1; });
+  }
+
+  /* ---------------- daily routine ---------------- */
+
+  function dailyDoc() {
+    var r = state.settings.find(function (s) { return s.id === "daily"; }) || {};
+    return {
+      postTimes: Array.isArray(r.postTimes) ? r.postTimes.slice().sort() : [],
+      briefingTime: r.briefingTime || ""
+    };
+  }
+  function atLocal(day, hhmm) {
+    var p = String(hhmm).split(":");
+    var d = new Date(day);
+    d.setHours(Number(p[0]) || 0, Number(p[1]) || 0, 0, 0);
+    return d;
+  }
+  /**
+   * The earliest daily post time that no other post has claimed. Approving a
+   * week of photos in one sitting fills one slot per photo, in order.
+   */
+  function nextFreeSlot(extraTaken) {
+    var times = dailyDoc().postTimes;
+    if (!times.length) return null;
+    var taken = Object.assign({}, extraTaken || {});
+    actions().forEach(function (a) {
+      if (a.type === "post" && a.dueAt && ["scheduled", "pending", "queued"].indexOf(a.status) >= 0) taken[Date.parse(a.dueAt)] = true;
+    });
+    var today = new Date();
+    for (var day = 0; day < 120; day++) {
+      var base = new Date(today); base.setDate(today.getDate() + day);
+      for (var i = 0; i < times.length; i++) {
+        var d = atLocal(base, times[i]);
+        if (d.getTime() > Date.now() + 2 * 60 * 1000 && !taken[d.getTime()]) return d;
+      }
+    }
+    return null;
+  }
+  async function saveDaily(next, message) {
+    var cur = dailyDoc();
+    var doc = Object.assign({}, cur, next, { updatedAt: nowIso() });
+    await save("settings", "daily", doc);
+    await syncBriefing(doc.briefingTime);
+    if (message) await log(message);
+  }
+  /** Keep exactly one repeating briefing, due at the chosen time. */
+  async function syncBriefing(hhmm) {
+    var rows = state.actions.filter(function (a) { return a.type === "daily_briefing" && a.repeat === "daily"; });
+    if (!hhmm) {
+      for (var i = 0; i < rows.length; i++) await remove("actions", rows[i].id);
+      return;
+    }
+    var due = atLocal(new Date(), hhmm);
+    if (due.getTime() <= Date.now()) due.setDate(due.getDate() + 1);
+    var keep = rows[0];
+    var body = {
+      type: "daily_briefing", repeat: "daily", time: hhmm, status: "scheduled",
+      dueAt: due.toISOString(), tz: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+      createdAt: keep ? keep.createdAt || nowIso() : nowIso(),
+      result: keep ? keep.result || "" : "", lastRunAt: keep ? keep.lastRunAt || "" : ""
+    };
+    await save("actions", keep ? keep.id : id(), body);
+    for (var j = 1; j < rows.length; j++) await remove("actions", rows[j].id);
+  }
+  function briefingRow() {
+    return state.actions.find(function (a) { return a.type === "daily_briefing" && a.repeat === "daily"; }) || null;
+  }
+
+  /** A daily task ticked yesterday comes back unticked today. */
+  async function resetDailyTasks() {
+    var today = new Date().toDateString();
+    var stale = state.tasks.filter(function (t) {
+      return t.repeat === "daily" && t.done && (!t.doneAt || new Date(t.doneAt).toDateString() !== today);
+    });
+    for (var i = 0; i < stale.length; i++) {
+      var t = stale[i];
+      await save("tasks", t.id, { title: t.title, done: false, doneAt: "", repeat: "daily", createdAt: t.createdAt });
+    }
   }
 
   /* ---------------- publishing ---------------- */
@@ -577,6 +677,7 @@
     for (var i = 0; i < profs.length; i++) {
       var p = profs[i];
       if (!current[p.id]) return p.name + " (" + platformName(p.platform) + ") is no longer connected in Postproxy.";
+      if (isWrong(current[p.id])) return p.name + " is marked as not your account. Nothing will ever be posted there.";
       if (!isConfirmed(p)) return p.name + " is not a confirmed account. Confirm it on the Posts tab first.";
       if (!FORMATS[a.format || "post"].allows(p)) return "A " + FORMATS[a.format].label.toLowerCase() + " cannot go to " + platformName(p.platform) + ".";
       if (NEEDS_MEDIA[p.platform] && !a.media) return platformName(p.platform) + " cannot post without a photo or video.";
@@ -817,23 +918,38 @@
       }))));
     }
 
-    var form = el("form", "composer");
+    var br = briefingRow();
+    if (br && br.result && br.lastRunAt && new Date(br.lastRunAt).toDateString() === new Date().toDateString()) {
+      f.appendChild(section("Today's briefing", card([row({ title: br.result, subtitle: "Written " + fmtWhen(br.lastRunAt) })])));
+    }
+
+    var form = el("form", "form");
     var input = el("input");
     input.type = "text"; input.maxLength = 200; input.placeholder = "Add a task";
     input.setAttribute("aria-label", "New task");
-    var add = el("button", "btn", "Add");
+    var daily = state.newTaskDaily || false;
+    var rep = el("button", "check");
+    rep.type = "button";
+    rep.setAttribute("role", "checkbox");
+    rep.setAttribute("aria-checked", daily ? "true" : "false");
+    rep.setAttribute("aria-label", "Repeat every day");
+    if (daily) rep.innerHTML = ICONS.tick;
+    rep.addEventListener("click", function () { state.newTaskDaily = !daily; render(); });
+    var repRow = row({ leading: rep, title: "Every day", subtitle: "Comes back unticked each morning" });
+    repRow.style.padding = "0";
+    var add = el("button", "btn", "Add task");
     add.type = "submit";
-    form.appendChild(input); form.appendChild(add);
+    form.appendChild(input); form.appendChild(repRow); form.appendChild(add);
     form.addEventListener("submit", function (e) {
       e.preventDefault();
       var title = input.value.trim();
       if (!title) return;
       input.value = "";
-      save("tasks", id(), { title: title, done: false, createdAt: nowIso() });
+      save("tasks", id(), { title: title, done: false, doneAt: "", repeat: daily ? "daily" : "", createdAt: nowIso() });
     });
 
     var open = state.tasks.filter(function (t) { return !t.done; });
-    var done = state.tasks.filter(function (t) { return t.done; }).slice(0, 5);
+    var done = state.tasks.filter(function (t) { return t.done; }).slice(0, 8);
     f.appendChild(el("h2", null, "Tasks"));
     f.appendChild(form);
     var tasksCard = card(taskRows(open.concat(done)));
@@ -841,19 +957,81 @@
     tasksCard.style.marginTop = "10px";
     f.appendChild(tasksCard);
 
+    f.appendChild(routineSection());
+
     var auto = card(Object.keys(LOW_RISK).map(function (k) {
       return row({
-        title: LOW_RISK[k].label, subtitle: "Runs on its own. Nothing leaves the app.",
+        title: LOW_RISK[k].label, subtitle: "Runs straight away. Nothing leaves the app.",
         trailing: button("Run now", "tinted sm", function () { runLowRisk({ id: id(), type: k, status: "scheduled", createdAt: nowIso() }); })
       });
     }));
-    f.appendChild(section("Quick automations", auto));
+    f.appendChild(section("Run now", auto));
 
     var recent = state.activity.slice().sort(function (a, b) { return a.at < b.at ? 1 : -1; }).slice(0, 6);
     f.appendChild(section("Recent activity", recent.length ? card(recent.map(function (a) {
       return row({ title: a.message, subtitle: fmtWhen(a.at) });
     })) : emptyCard("Nothing has happened yet.")));
     return f;
+  }
+
+  /** The settings that make the day run itself. */
+  function routineSection() {
+    var dd = dailyDoc();
+    var rows = [];
+
+    // Daily post times
+    dd.postTimes.forEach(function (t) {
+      rows.push(row({
+        title: "Post at " + atLocal(new Date(), t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }),
+        subtitle: "Every day",
+        trailing: button("Remove", "plain sm", function () {
+          saveDaily({ postTimes: dd.postTimes.filter(function (x) { return x !== t; }) }, "Removed daily post time " + t);
+        })
+      }));
+    });
+    var addForm = el("form", "pair");
+    addForm.style.alignItems = "center";
+    var tIn = el("input"); tIn.type = "time"; tIn.value = "21:00";
+    tIn.setAttribute("aria-label", "Daily post time");
+    var tAdd = el("button", "btn tinted", "Add post time");
+    tAdd.type = "submit";
+    addForm.appendChild(tIn); addForm.appendChild(tAdd);
+    addForm.addEventListener("submit", function (e) {
+      e.preventDefault();
+      var v = tIn.value;
+      if (!v || dd.postTimes.indexOf(v) >= 0) return;
+      saveDaily({ postTimes: dd.postTimes.concat([v]).sort() }, "Added daily post time " + v);
+    });
+    var addRow = el("div", "row");
+    addRow.appendChild(addForm);
+    addForm.style.flex = "1";
+    rows.push(addRow);
+
+    // Morning briefing
+    var br = briefingRow();
+    var bIn = el("input"); bIn.type = "time"; bIn.value = dd.briefingTime || "08:00";
+    bIn.setAttribute("aria-label", "Briefing time");
+    bIn.style.width = "8.5rem";
+    var bBtn = dd.briefingTime
+      ? button("Turn off", "plain sm", function () { saveDaily({ briefingTime: "" }, "Turned off the daily briefing"); })
+      : button("Turn on", "tinted sm", function () { saveDaily({ briefingTime: bIn.value || "08:00" }, "Daily briefing set for " + (bIn.value || "08:00")); });
+    if (dd.briefingTime) {
+      bIn.addEventListener("change", function () {
+        if (bIn.value) saveDaily({ briefingTime: bIn.value }, "Daily briefing moved to " + bIn.value);
+      });
+    }
+    rows.push(row({
+      title: "Morning briefing",
+      subtitle: dd.briefingTime
+        ? "Written for you every day, ready by " + atLocal(new Date(), dd.briefingTime).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) +
+          (br && br.dueAt ? " · next " + fmtWhen(br.dueAt) : "")
+        : "Off. A short summary of your day, written automatically.",
+      trailing: [bIn, bBtn]
+    }));
+
+    return section("Daily routine", card(rows),
+      "Post times: when you approve a post with “Next daily slot”, it takes the next free one, so a week of photos approved at once goes out one a day. " +
+      "Each post still needs your approval — only the timing is automatic.");
   }
 
   function taskRows(list) {
@@ -864,11 +1042,18 @@
       check.setAttribute("aria-label", (task.done ? "Mark not done: " : "Mark done: ") + task.title);
       if (task.done) check.innerHTML = ICONS.tick;
       check.addEventListener("click", function () {
-        save("tasks", task.id, { title: task.title, done: !task.done, createdAt: task.createdAt });
+        save("tasks", task.id, {
+          title: task.title, done: !task.done, doneAt: !task.done ? nowIso() : "",
+          repeat: task.repeat || "", createdAt: task.createdAt
+        });
       });
       var del = button("Delete", "plain sm", function () { remove("tasks", task.id); });
       del.setAttribute("aria-label", "Delete task: " + task.title);
-      return row({ className: task.done ? "done" : "", leading: check, title: task.title, trailing: del });
+      return row({
+        className: task.done ? "done" : "", leading: check, title: task.title,
+        subtitle: task.repeat === "daily" ? "Every day" + (task.done ? " · comes back tomorrow" : "") : "",
+        trailing: del
+      });
     });
   }
 
@@ -881,8 +1066,19 @@
     } else if (c.phase === "error") {
       steps.push({ t: "Postproxy is not reachable", s: connFix(c.error) });
     } else if (c.phase === "ready") {
+      missingExpected().forEach(function (m) {
+        steps.push({
+          t: "Connect @" + m.handle,
+          s: "Your " + platformName(m.platform) + " account is not connected yet. In Postproxy, connect " + platformName(m.platform) +
+            " while signed in as @" + m.handle + " — not any other account. It must be a Business or Creator account.",
+          href: POSTPROXY_APP, cta: "Open Postproxy"
+        });
+      });
+      c.profiles.filter(isWrong).forEach(function (p) {
+        steps.push({ t: "Disconnect " + p.name, s: "Connected by mistake. The app will never post to it, but remove it in Postproxy so it cannot be picked by accident anywhere else.", href: POSTPROXY_APP, cta: "Open Postproxy" });
+      });
       if (!c.profiles.length) steps.push({ t: "Connect a social account", s: "Add Instagram, Facebook, LinkedIn and others in Postproxy.", href: POSTPROXY_APP, cta: "Open Postproxy" });
-      var unconf = c.profiles.filter(function (p) { return !isConfirmed(p); });
+      var unconf = c.profiles.filter(function (p) { return !isConfirmed(p) && !isWrong(p); });
       if (unconf.length) steps.push({ t: unconf.length + " account" + (unconf.length > 1 ? "s" : "") + " to confirm", s: "Nothing posts to an account until you confirm it once. Posts tab → Accounts.", tab: "posts", cta: "Confirm" });
     }
     if (state.folder.phase === "private") {
@@ -1033,12 +1229,26 @@
         row({ title: "Postproxy is not reachable", subtitle: connFix(c.error), trailing: button("Try again", "tinted sm", function () { loadConnection(true); }) })
       ]));
     }
-    var rows = c.profiles.map(function (p) {
-      var on = isConfirmed(p);
-      var t = on
-        ? [chip("Confirmed", "ok"), button("Remove", "plain sm", function () { setConfirmed(p, false); })]
-        : [button("Confirm", "sm", function () { setConfirmed(p, true); })];
-      return row({ title: p.name, subtitle: platformName(p.platform) + " · " + p.id, trailing: t });
+    var rows = [];
+    missingExpected().forEach(function (m) {
+      rows.push(row({
+        title: "@" + m.handle + " is not connected",
+        subtitle: "Connect it in Postproxy while signed in to Instagram as @" + m.handle + ". It must be a Business or Creator account.",
+        trailing: link("Open Postproxy", POSTPROXY_APP, "sm")
+      }));
+    });
+    c.profiles.forEach(function (p) {
+      var t, sub = platformName(p.platform) + " · " + p.id;
+      if (isWrong(p)) {
+        sub = platformName(p.platform) + " · not your account — the app never posts here. Disconnect it in Postproxy.";
+        t = [chip("Not mine", "bad"), button("Undo", "plain sm", function () { setWrong(p, false); })];
+      } else if (isConfirmed(p)) {
+        t = [chip("Confirmed", "ok"), button("Remove", "plain sm", function () { setConfirmed(p, false); })];
+      } else {
+        if (isExpected(p)) sub = platformName(p.platform) + " · the account you said is yours";
+        t = [button("Not mine", "plain sm", function () { setWrong(p, true); }), button("Confirm", "sm", function () { setConfirmed(p, true); })];
+      }
+      rows.push(row({ title: p.name, subtitle: sub, trailing: t }));
     });
     rows.push(row({
       title: "Add more accounts",
@@ -1181,17 +1391,30 @@
     // When
     var ww = el("div");
     ww.appendChild(el("label", "field", "When"));
+    var hasSlots = dailyDoc().postTimes.length > 0;
+    var when = cmp.when || (hasSlots ? "slot" : "later");
     var wseg = el("div", "seg");
-    ["now", "later"].forEach(function (k) {
-      var b = el("button", null, k === "now" ? "Right away" : "At a time");
+    wseg.setAttribute("role", "radiogroup");
+    wseg.setAttribute("aria-label", "When");
+    [["now", "Right away"], ["slot", "Next daily slot"], ["later", "Pick a time"]].forEach(function (o) {
+      var b = el("button", null, o[1]);
       b.type = "button";
-      b.setAttribute("aria-checked", (cmp.when || "later") === k ? "true" : "false");
-      b.addEventListener("click", function () { cmp.when = k; render(); });
+      b.setAttribute("role", "radio");
+      b.setAttribute("aria-checked", when === o[0] ? "true" : "false");
+      b.addEventListener("click", function () { cmp.when = o[0]; render(); });
       wseg.appendChild(b);
     });
     ww.appendChild(wseg);
+    if (when === "slot") {
+      var nx = nextFreeSlot();
+      var sn = el("p", "note");
+      sn.textContent = nx
+        ? "Goes out " + fmtWhen(nx.toISOString()) + " — your next free daily post time."
+        : "You have no daily post times yet. Add them under Today → Daily routine.";
+      ww.appendChild(sn);
+    }
     var dateIn = null, timeIn = null;
-    if ((cmp.when || "later") === "later") {
+    if (when === "later") {
       var pair = el("div", "pair");
       pair.style.marginTop = "10px";
       dateIn = el("input"); dateIn.type = "date";
@@ -1222,8 +1445,13 @@
       var chosen = profs.filter(function (p) { return cmp.picked[p.id]; })
         .map(function (p) { return { id: p.id, name: p.name, platform: p.platform }; });
       var dueAt;
-      if ((cmp.when || "later") === "now") dueAt = nowIso();
-      else {
+      var mode = cmp.when || (dailyDoc().postTimes.length ? "slot" : "later");
+      if (mode === "now") dueAt = nowIso();
+      else if (mode === "slot") {
+        var slot = nextFreeSlot();
+        if (!slot) { err.textContent = "Add a daily post time under Today → Daily routine first, or pick a time."; err.hidden = false; return; }
+        dueAt = slot.toISOString();
+      } else {
         var parts = (cmp.time || "21:00").split(":");
         var d = new Date((cmp.date || localDateValue(new Date())) + "T00:00:00");
         d.setHours(Number(parts[0]) || 0, Number(parts[1]) || 0, 0, 0);
@@ -1406,7 +1634,15 @@
       } catch (e) { text = ""; }
     }
     if (!text) text = open.length ? open.length + " open: " + open.slice(0, 5).join("; ") + (open.length > 5 ? "…" : "") : "Nothing open.";
-    var row0 = Object.assign({}, action, { status: "done", decidedAt: nowIso(), result: text });
+    var row0;
+    if (action.repeat === "daily" && action.time) {
+      // A repeating automation never finishes: it moves on to tomorrow.
+      var next = atLocal(new Date(), action.time);
+      while (next.getTime() <= Date.now()) next.setDate(next.getDate() + 1);
+      row0 = Object.assign({}, action, { status: "scheduled", dueAt: next.toISOString(), result: text, lastRunAt: nowIso() });
+    } else {
+      row0 = Object.assign({}, action, { status: "done", decidedAt: nowIso(), result: text });
+    }
     var rid = row0.id; delete row0.id;
     await save("actions", rid, row0);
     await log(LOW_RISK[action.type].label + ": " + text.slice(0, 140));
@@ -1606,6 +1842,15 @@
     state.ready = true;
     if (db) ["tasks", "actions", "memories", "activity", "messages", "settings"].forEach(subscribe);
     render();
+    // Daily tasks reset at midnight, even with the app left open.
+    setTimeout(resetDailyTasks, 1500);
+    setInterval(resetDailyTasks, 60 * 1000);
+    // The hourly scheduler writes the briefing; if it has been missed by more
+    // than a run, write it here instead so the morning is never empty.
+    setTimeout(function () {
+      var br = briefingRow();
+      if (br && br.status === "scheduled" && br.dueAt && Date.parse(br.dueAt) < Date.now() - 75 * 60 * 1000) runLowRisk(br);
+    }, 2500);
     loadConnection(false).then(function () {
       if (!mcp) return;
       checkFolder();

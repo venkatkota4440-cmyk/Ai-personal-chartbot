@@ -12,7 +12,8 @@ const STUB = `
 (function () {
   var calls = [];
   window.__calls = calls;
-  var store = {};
+  var mode0 = window.__mode || {};
+  var store = JSON.parse(JSON.stringify(mode0.seed || {}));
   function coll(name) {
     store[name] = store[name] || {};
     var subs = [];
@@ -195,6 +196,77 @@ function check(cond, label) {
   await p2.click("nav >> text=Messages");
   await p2.waitForTimeout(500);
   check(/Messages are switched off/.test(await p2.textContent("main")), "opt-in error gets its own fix");
+
+
+  console.log("Wrong account");
+  const yday = new Date(Date.now() - 26 * 3600 * 1000).toISOString();
+  const p3 = await ctx.newPage();
+  p3.on("pageerror", (e) => errors.push(String(e)));
+  await p3.setContent(page({ seed: {
+    settings: { accounts: { confirmed: { FB1: { name: "My Page", platform: "facebook" } },
+      wrong: { IG1: { name: "my_insta", platform: "instagram" } }, expected: { instagram: "real_insta" } } },
+    tasks: { T1: { title: "Gym", done: true, doneAt: yday, repeat: "daily", createdAt: yday },
+             T2: { title: "One-off", done: true, doneAt: yday, repeat: "", createdAt: yday } }
+  } }));
+  await p3.waitForTimeout(2200);
+  let t3 = await p3.textContent("main");
+  check(/Connect @real_insta/.test(t3), "missing real account is asked for");
+  check(/Disconnect my_insta/.test(t3), "wrong account flagged for removal");
+  check(/1 account to confirm/.test(t3), "only the genuinely unconfirmed account is counted, not the wrong one");
+  const tasks = await p3.evaluate(() => window.__store.tasks);
+  check(tasks.T1.done === false, "daily task ticked yesterday is unticked today");
+  check(tasks.T2.done === true, "one-off task stays done");
+  await p3.click("nav >> text=Posts");
+  await p3.waitForTimeout(300);
+  t3 = await p3.textContent("main");
+  check(/Not mine/.test(t3) && /never posts here/.test(t3), "wrong account labelled in Accounts");
+  const igBox = await p3.$("main [role=checkbox][aria-label*='Instagram']");
+  check(!igBox, "wrong account cannot be picked for a post");
+
+  console.log("Daily routine");
+  await p3.click("nav >> text=Today");
+  await p3.waitForTimeout(200);
+  await p3.fill("main input[aria-label='Daily post time']", "21:00");
+  await p3.click("main button:has-text('Add post time')");
+  await p3.waitForTimeout(250);
+  await p3.fill("main input[aria-label='Daily post time']", "09:00");
+  await p3.click("main button:has-text('Add post time')");
+  await p3.waitForTimeout(250);
+  let daily = await p3.evaluate(() => window.__store.settings.daily);
+  check(daily && daily.postTimes.join(",") === "09:00,21:00", "two daily post times saved, sorted");
+  await p3.click("main button:has-text('Turn on')");
+  await p3.waitForTimeout(400);
+  const brief = await p3.evaluate(() => Object.values(window.__store.actions || {}).filter((a) => a.type === "daily_briefing"));
+  check(brief.length === 1 && brief[0].repeat === "daily" && Date.parse(brief[0].dueAt) > Date.now(), "briefing scheduled once, in the future");
+  await p3.click("main button:has-text('Turn on'), main button:has-text('Turn off')");
+  await p3.waitForTimeout(300);
+  const brief2 = await p3.evaluate(() => Object.values(window.__store.actions || {}).filter((a) => a.type === "daily_briefing"));
+  check(brief2.length === 0, "turning the briefing off removes it");
+
+  // Two posts into daily slots: each takes a different, later slot.
+  await p3.click("nav >> text=Posts");
+  await p3.waitForTimeout(250);
+  async function slotPost(caption) {
+    const fb = await p3.$("main [role=checkbox][aria-label*='Facebook']");
+    if ((await fb.getAttribute("aria-checked")) !== "true") await fb.click();
+    await p3.fill("#compose-caption", caption);
+    await p3.click("main .seg >> text=Next daily slot");
+    await p3.waitForTimeout(150);
+    await p3.click("main button:has-text('Review and approve')");
+    await p3.waitForTimeout(350);
+    const errText = await p3.evaluate(() => { const e = document.querySelector("main .err"); return e && !e.hidden ? e.textContent : ""; });
+    const dlgOpen = await p3.evaluate(() => document.getElementById("sheet").open);
+    if (!dlgOpen) { console.log("    debug: dialog not open; form error =", JSON.stringify(errText)); throw new Error("no dialog"); }
+    await p3.click("dialog button:has-text('Approve and schedule')");
+    await p3.waitForTimeout(400);
+  }
+  await slotPost("first");
+  await slotPost("second");
+  const sched = await p3.evaluate(() => window.__calls.filter((c) => c.tool === "post_publish").map((c) => c.input.schedule));
+  check(sched.length === 2 && sched[0] && sched[1] && sched[0] !== sched[1], "two posts got two different slots");
+  const hours = sched.map((x) => new Date(x).getHours() + ":" + String(new Date(x).getMinutes()).padStart(2, "0"));
+  check(hours.every((h) => h === "9:00" || h === "21:00"), "slots are the daily post times (" + hours.join(", ") + ")");
+  check(Date.parse(sched[1]) > Date.parse(sched[0]), "second post is after the first");
 
   console.log("Tabs render without errors");
   for (const t of ["Today", "Chat", "Posts", "Messages", "Approvals"]) {
